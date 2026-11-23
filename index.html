@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PocketCode - Mobile-First Web IDE</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for crisp icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        editor: {
+                            bg: '#0f172a',
+                            surface: '#1e293b',
+                            border: '#334155',
+                            text: '#f8fafc',
+                            muted: '#94a3b8',
+                            accent: '#38bdf8'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Custom styles for seamless editor overlay and mobile ergonomics */
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
+        }
+
+        /* Synchronized Editor & Syntax Highlighting Layer */
+        .editor-container {
+            position: relative;
+            flex: 1;
+            overflow: hidden;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .editor-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 16px;
+            border: 0;
+            font-family: inherit;
+            font-size: inherit;
+            line-height: inherit;
+            tab-size: 2;
+            white-space: pre;
+            overflow: auto;
+            word-wrap: normal;
+        }
+
+        /* Textarea sits on top, transparent text, visible caret */
+        #code-input {
+            color: transparent;
+            background: transparent;
+            caret-color: #38bdf8;
+            z-index: 2;
+            resize: none;
+            outline: none;
+        }
+
+        /* Pre/Code sits underneath, renders syntax colors */
+        #code-highlight {
+            z-index: 1;
+            pointer-events: none;
+            color: #e2e8f0;
+        }
+
+        /* Hide scrollbars on horizontal quick-symbol bar while allowing scroll */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Custom subtle scrollbars for editor & console */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 3px;
+        }
+
+        /* Syntax Highlighting Token Colors */
+        .tok-tag { color: #f472b6; }
+        .tok-attr { color: #38bdf8; }
+        .tok-str { color: #a3e635; }
+        .tok-kw { color: #c084fc; font-weight: 500; }
+        .tok-num { color: #fb923c; }
+        .tok-comm { color: #64748b; font-style: italic; }
+        .tok-prop { color: #38bdf8; }
+        .tok-func { color: #60a5fa; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-dvh flex flex-col overflow-hidden select-none">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900 border-b border-slate-800 px-3 py-2 flex items-center justify-between gap-2 shrink-0 z-20">
+        <!-- Brand & File Info -->
+        <div class="flex items-center gap-2.5 min-w-0">
+            <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-md shrink-0">
+                <i class="fa-solid fa-code text-white text-sm"></i>
+            </div>
+            <div class="truncate">
+                <h1 class="text-sm font-bold tracking-tight text-white leading-tight truncate">PocketCode</h1>
+                <p id="status-indicator" class="text-[11px] text-slate-400 leading-tight truncate">Ready</p>
+            </div>
+        </div>
+
+        <!-- Primary Actions -->
+        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <!-- Template Selector -->
+            <select id="template-select" aria-label="Load Template" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-2 border border-slate-700 focus:outline-none focus:border-sky-500 transition cursor-pointer max-w-[110px] sm:max-w-none">
+                <option value="starter">Starter App</option>
+                <option value="canvas">Canvas Particles</option>
+                <option value="counter">Interactive Counter</option>
+                <option value="blank">Blank Project</option>
+            </select>
+
+            <!-- Format Button -->
+            <button id="btn-format" title="Auto-Indent / Format" class="p-2 sm:px-3 sm:py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-lg border border-slate-700 text-xs font-medium transition flex items-center gap-1.5">
+                <i class="fa-solid fa-wand-magic-sparkles text-amber-400"></i>
+                <span class="hidden md:inline">Format</span>
+            </button>
+
+            <!-- Copy Code Button -->
+            <button id="btn-copy" title="Copy All Code" class="p-2 sm:px-3 sm:py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-lg border border-slate-700 text-xs font-medium transition flex items-center gap-1.5">
+                <i class="fa-regular fa-copy text-sky-400"></i>
+                <span class="hidden md:inline">Copy</span>
+            </button>
+
+            <!-- Download HTML Button -->
+            <button id="btn-download" title="Download index.html" class="p-2 sm:px-3 sm:py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-lg border border-slate-700 text-xs font-medium transition flex items-center gap-1.5">
+                <i class="fa-solid fa-download text-emerald-400"></i>
+                <span class="hidden md:inline">Export</span>
+            </button>
+
+            <!-- Run Button -->
+            <button id="btn-run" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-lg text-xs font-semibold shadow-lg shadow-emerald-950/50 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-play text-[10px]"></i>
+                <span>Run</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- File Tabs & Mobile View Switcher -->
+    <div class="bg-slate-900/90 border-b border-slate-800 px-2 pt-1.5 flex items-center justify-between gap-2 shrink-0">
+        <!-- File Tabs -->
+        <div class="flex items-center gap-1 overflow-x-auto no-scrollbar">
+            <button data-tab="html" class="file-tab active px-3 py-1.5 rounded-t-lg text-xs font-medium flex items-center gap-1.5 border-t border-x border-slate-700 bg-slate-950 text-sky-400 transition">
+                <i class="fa-brands fa-html5 text-orange-500"></i>
+                <span>index.html</span>
+            </button>
+            <button data-tab="css" class="file-tab px-3 py-1.5 rounded-t-lg text-xs font-medium flex items-center gap-1.5 border-t border-x border-transparent text-slate-400 hover:text-slate-200 transition">
+                <i class="fa-brands fa-css3-alt text-blue-400"></i>
+                <span>style.css</span>
+            </button>
+            <button data-tab="js" class="file-tab px-3 py-1.5 rounded-t-lg text-xs font-medium flex items-center gap-1.5 border-t border-x border-transparent text-slate-400 hover:text-slate-200 transition">
+                <i class="fa-brands fa-js text-yellow-400"></i>
+                <span>script.js</span>
+            </button>
+        </div>
+
+        <!-- Mobile-Only Pane Switcher (Editor vs Live Output) -->
+        <div class="flex md:hidden bg-slate-800 p-0.5 rounded-lg border border-slate-700 mb-1 shrink-0">
+            <button id="mobile-view-code" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-sky-600 text-white transition">
+                Code
+            </button>
+            <button id="mobile-view-preview" class="px-2.5 py-1 rounded-md text-[11px] font-semibold text-slate-300 hover:text-white transition flex items-center gap-1">
+                Preview
+                <span id="console-badge" class="hidden w-2 h-2 rounded-full bg-rose-500"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Workspace (Split on Desktop, Fullscreen Toggle on Mobile) -->
+    <main class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        
+        <!-- LEFT PANE: Code Editor -->
+        <section id="pane-editor" class="flex-1 flex flex-col bg-slate-950 md:border-r border-slate-800 min-w-0 h-full">
+            
+            <!-- Editor Area with Line Numbers -->
+            <div class="flex-1 flex overflow-hidden relative">
+                <!-- Line Numbers Gutter -->
+                <div id="line-numbers" class="bg-slate-900/50 text-slate-600 font-mono text-[14px] leading-[1.6] py-4 px-2.5 text-right select-none border-r border-slate-800/80 overflow-hidden shrink-0">
+                    1
+                </div>
+
+                <!-- Code Overlay Container -->
+                <div class="editor-container bg-slate-950">
+                    <pre id="code-highlight" class="editor-layer" aria-hidden="true"></pre>
+                    <textarea id="code-input" class="editor-layer select-text" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" placeholder="Write your code here..."></textarea>
+                </div>
+            </div>
+
+            <!-- Mobile-Friendly Quick Symbol & Navigation Toolbar -->
+            <div class="bg-slate-900 border-t border-slate-800 px-2 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
+                <button type="button" data-insert="  " class="sym-btn px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-slate-200 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">TAB</button>
+                <button type="button" data-insert="<>" data-cursor="-1" class="sym-btn px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-sky-300 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">&lt;&gt;</button>
+                <button type="button" data-insert="{}" data-cursor="-1" class="sym-btn px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-amber-300 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">{}</button>
+                <button type="button" data-insert="()" data-cursor="-1" class="sym-btn px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-purple-300 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">()</button>
+                <button type="button" data-insert="[]" data-cursor="-1" class="sym-btn px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-emerald-300 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">[]</button>
+                <button type="button" data-insert='""' data-cursor="-1" class="sym-btn px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-lime-300 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">""</button>
+                <button type="button" data-insert=";" class="sym-btn px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-slate-200 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">;</button>
+                <button type="button" data-insert=":" class="sym-btn px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-slate-200 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">:</button>
+                <button type="button" data-insert="=" class="sym-btn px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-slate-200 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">=</button>
+                <button type="button" data-insert="/" class="sym-btn px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-slate-200 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">/</button>
+                <button type="button" data-insert=" => " class="sym-btn px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-pink-300 rounded text-xs font-mono font-semibold shrink-0 border border-slate-700">=&gt;</button>
+                <button type="button" id="btn-undo" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-sky-600 text-slate-300 rounded text-xs shrink-0 border border-slate-700 ml-auto" title="Undo">
+                    <i class="fa-solid fa-rotate-left"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- RIGHT PANE: Live Preview & Interactive Console -->
+        <section id="pane-preview" class="hidden md:flex flex-1 flex-col bg-white min-w-0 h-full relative">
+            
+            <!-- Preview Header Bar -->
+            <div class="bg-slate-100 border-b border-slate-200 px-3 py-1.5 flex items-center justify-between text-slate-600 shrink-0">
+                <div class="flex items-center gap-2 text-xs font-medium">
+                    <span class="flex gap-1">
+                        <span class="w-2.5 h-2.5 rounded-full bg-rose-400"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    </span>
+                    <span class="ml-1 text-slate-500 font-mono text-[11px]">localhost:preview</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer select-none">
+                        <input type="checkbox" id="auto-run-toggle" checked class="rounded text-sky-600 focus:ring-0">
+                        <span>Auto-Run</span>
+                    </label>
+                    <button id="btn-toggle-console" class="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[11px] font-semibold flex items-center gap-1 transition">
+                        <i class="fa-solid fa-terminal text-[10px]"></i>
+                        <span>Console</span>
+                        <span id="console-count" class="bg-slate-700 text-white px-1.5 rounded-full text-[10px]">0</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sandboxed Iframe Output -->
+            <div class="flex-1 relative bg-white overflow-hidden">
+                <iframe id="preview-frame" class="w-full h-full border-0" sandbox="allow-scripts allow-modals allow-forms allow-same-origin"></iframe>
+            </div>
+
+            <!-- Collapsible JavaScript Console Drawer -->
+            <div id="console-drawer" class="h-44 bg-slate-900 border-t border-slate-700 flex flex-col shrink-0 transition-all">
+                <div class="px-3 py-1.5 bg-slate-950 border-b border-slate-800 flex items-center justify-between text-xs">
+                    <span class="font-semibold text-slate-300 flex items-center gap-1.5">
+                        <i class="fa-solid fa-terminal text-sky-400 text-[11px]"></i>
+                        Console Output
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <button id="btn-clear-console" class="text-slate-400 hover:text-white text-[11px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 transition">
+                            Clear
+                        </button>
+                        <button id="btn-close-console" class="text-slate-400 hover:text-white px-1">
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="console-logs" class="flex-1 overflow-y-auto p-2.5 font-mono text-xs space-y-1.5 select-text">
+                    <div class="text-slate-500 italic">Console initialized. Logs and runtime errors appear here...</div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Custom Non-Blocking Toast Notification -->
+    <div id="toast" class="fixed bottom-16 left-1/2 -translate-x-1/2 bg-slate-800 text-white border border-slate-600 px-4 py-2 rounded-full shadow-xl text-xs font-medium flex items-center gap-2 opacity-0 pointer-events-none transition-opacity duration-200 z-50">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toast-message">Action completed</span>
+    </div>
+
+    <!-- Hidden textarea for safe clipboard copying -->
+    <textarea id="clipboard-helper" class="sr-only" aria-hidden="true"></textarea>
+
+    <script>
+        /**
+         * PocketCode - Self-Contained Mobile-First Web Code Editor
+         * Features: Multi-file tabs (HTML/CSS/JS), regex syntax highlighting,
+         * mobile symbol toolbar, auto-closing brackets, sandboxed live preview,
+         * and intercepted console logs.
+         */
+
+        // --- Starter Templates ---
+        const TEMPLATES = {
+            starter: {
+                html: `<div class="card">
+  <div class="badge">Live Preview</div>
+  <h1>Hello, PocketCode!</h1>
+  <p>Edit HTML, CSS, or JS and see instant changes on mobile or desktop.</p>
+  <button id="greet-btn">Tap Me ✨</button>
+  <p id="output" class="output"></p>
+</div>`,
+                css: `body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+  color: #f8fafc;
+  min-height: 100vh;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.card {
+  background: rgba(30, 41, 59, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
+  padding: 28px;
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.5);
+}
+
+.badge {
+  display: inline-block;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 10px;
+}
+
+p {
+  color: #94a3b8;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0 0 20px;
+}
+
+button {
+  background: #38bdf8;
+  color: #0f172a;
+  border: none;
+  padding: 12px 24px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+button:active {
+  transform: scale(0.96);
+}
+
+.output {
+  margin-top: 16px;
+  margin-bottom: 0;
+  color: #a3e635;
+  font-weight: 500;
+}`,
+                js: `const btn = document.getElementById('greet-btn');
+const output = document.getElementById('output');
+let taps = 0;
+
+console.log('App ready! Try tapping the button.');
+
+btn.addEventListener('click', () => {
+  taps++;
+  output.textContent = \`You tapped \${taps} time\${taps === 1 ? '' : 's'}!\`;
+  console.log(\`Button tapped: count = \${taps}\`);
+});`
+            },
+            canvas: {
+                html: `<canvas id="space"></canvas>
+<div class="hint">Touch or move cursor to attract particles</div>`,
+                css: `body, html {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #090d16;
+  font-family: system-ui, sans-serif;
+}
+canvas {
+  display: block;
+}
+.hint {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255,255,255,0.6);
+  font-size: 12px;
+  background: rgba(15, 23, 42, 0.7);
+  padding: 6px 14px;
+  border-radius: 20px;
+  pointer-events: none;
+}`,
+                js: `const canvas = document.getElementById('space');
+const ctx = canvas.getContext('2d');
+let w, h, pointer = { x: null, y: null };
+
+function resize() {
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+window.addEventListener('mousemove', e => { pointer.x = e.clientX; pointer.y = e.clientY; });
+window.addEventListener('touchmove', e => {
+  pointer.x = e.touches[0].clientX;
+  pointer.y = e.touches[0].clientY;
+});
+
+const dots = Array.from({ length: 55 }, () => ({
+  x: Math.random() * w,
+  y: Math.random() * h,
+  vx: (Math.random() - 0.5) * 1.5,
+  vy: (Math.random() - 0.5) * 1.5,
+  r: Math.random() * 2.5 + 1.5,
+  color: ['#38bdf8', '#c084fc', '#34d399'][Math.floor(Math.random() * 3)]
+}));
+
+function loop() {
+  ctx.fillStyle = 'rgba(9, 13, 22, 0.25)';
+  ctx.fillRect(0, 0, w, h);
+
+  dots.forEach(d => {
+    if (pointer.x !== null) {
+      const dx = pointer.x - d.x;
+      const dy = pointer.y - d.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 140) {
+        d.vx += dx * 0.0008;
+        d.vy += dy * 0.0008;
+      }
+    }
+    d.x += d.vx;
+    d.y += d.vy;
+    d.vx *= 0.99;
+    d.vy *= 0.99;
+
+    if (d.x < 0 || d.x > w) d.vx *= -1;
+    if (d.y < 0 || d.y > h) d.vy *= -1;
+
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+    ctx.fillStyle = d.color;
+    ctx.fill();
+  });
+  requestAnimationFrame(loop);
+}
+loop();`
+            },
+            counter: {
+                html: `<main class="box">
+  <h2>Counter</h2>
+  <div id="val" class="num">0</div>
+  <div class="row">
+    <button onclick="update(-1)">−</button>
+    <button onclick="update(0)" class="reset">Reset</button>
+    <button onclick="update(1)">+</button>
+  </div>
+</main>`,
+                css: `body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #f1f5f9;
+  font-family: system-ui, sans-serif;
+}
+.box {
+  background: white;
+  padding: 2rem;
+  border-radius: 1rem;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+  text-align: center;
+}
+.num {
+  font-size: 4rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 1rem 0;
+}
+.row { display: flex; gap: 0.75rem; }
+button {
+  flex: 1;
+  padding: 0.75rem 1.25rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 0.5rem;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+}
+button.reset { background: #64748b; font-size: 1rem; }`,
+                js: `let count = 0;
+const valEl = document.getElementById('val');
+
+function update(delta) {
+  count = delta === 0 ? 0 : count + delta;
+  valEl.textContent = count;
+  valEl.style.color = count > 0 ? '#16a34a' : count < 0 ? '#dc2626' : '#0f172a';
+}`
+            },
+            blank: {
+                html: `<h1>Hello World</h1>`,
+                css: `body {\n  font-family: sans-serif;\n  padding: 1rem;\n}`,
+                js: `// Write JavaScript here\n`
+            }
+        };
+
+        // --- Application State ---
+        const state = {
+            activeTab: 'html',
+            files: {
+                html: '',
+                css: '',
+                js: ''
+            },
+            history: {
+                html: [],
+                css: [],
+                js: []
+            },
+            autoRun: true,
+            consoleCount: 0,
+            mobileView: 'code' // 'code' | 'preview'
+        };
+
+        // --- DOM Elements ---
+        const codeInput = document.getElementById('code-input');
+        const codeHighlight = document.getElementById('code-highlight');
+        const lineNumbers = document.getElementById('line-numbers');
+        const previewFrame = document.getElementById('preview-frame');
+        const consoleLogs = document.getElementById('console-logs');
+        const consoleCount = document.getElementById('console-count');
+        const consoleBadge = document.getElementById('console-badge');
+        const statusIndicator = document.getElementById('status-indicator');
+        const paneEditor = document.getElementById('pane-editor');
+        const panePreview = document.getElementById('pane-preview');
+        const mobileBtnCode = document.getElementById('mobile-view-code');
+        const mobileBtnPreview = document.getElementById('mobile-view-preview');
+
+        let runDebounceTimer = null;
+
+        // --- Initialization ---
+        function init() {
+            // Load saved code from localStorage or fallback to starter template
+            const saved = localStorage.getItem('pocketcode_project_v1');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    state.files = { ...TEMPLATES.starter, ...parsed };
+                    statusIndicator.textContent = 'Restored session';
+                } catch (e) {
+                    loadTemplate('starter');
+                }
+            } else {
+                loadTemplate('starter');
+            }
+
+            switchTab('html');
+            runPreview();
+            setupEventListeners();
+        }
+
+        function loadTemplate(name) {
+            const tpl = TEMPLATES[name] || TEMPLATES.starter;
+            state.files.html = tpl.html;
+            state.files.css = tpl.css;
+            state.files.js = tpl.js;
+            saveToStorage();
+            renderEditor();
+            runPreview();
+        }
+
+        function saveToStorage() {
+            try {
+                localStorage.setItem('pocketcode_project_v1', JSON.stringify(state.files));
+            } catch (e) {
+                // Ignore storage quota issues
+            }
+        }
+
+        // --- Lightweight Regex Syntax Highlighter ---
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function highlightSyntax(code, lang) {
+            let escaped = escapeHtml(code);
+
+            if (lang === 'html') {
+                // Comments
+                escaped = escaped.replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="tok-comm">$1</span>');
+                // Tags & Attributes
+                escaped = escaped.replace(/(&lt;\/?)([a-zA-Z0-9-]+)([\s\S]*?)(\/?&gt;)/g, (match, open, tag, attrs, close) => {
+                    const highlightedAttrs = attrs.replace(/([a-zA-Z0-9-]+)(=)(".*?"|'.*?')/g, '<span class="tok-prop">$1</span>$2<span class="tok-str">$3</span>');
+                    return `<span class="tok-tag">${open}${tag}</span>${highlightedAttrs}<span class="tok-tag">${close}</span>`;
+                });
+            } else if (lang === 'css') {
+                // Comments
+                escaped = escaped.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="tok-comm">$1</span>');
+                // Strings
+                escaped = escaped.replace(/(".*?"|'.*?')/g, '<span class="tok-str">$1</span>');
+                // Properties
+                escaped = escaped.replace(/([a-zA-Z-]+)(\s*:)/g, '<span class="tok-prop">$1</span>$2');
+                // Numbers & Units
+                escaped = escaped.replace(/\b(\d+(?:\.\d+)?(?:px|rem|em|%|vh|vw|s|ms|deg)?)\b/g, '<span class="tok-num">$1</span>');
+            } else if (lang === 'js') {
+                // Single-line and multi-line comments
+                escaped = escaped.replace(/(\/\/.*$|\/\*[\s\S]*?\*\/)/gm, '<span class="tok-comm">$1</span>');
+                // Strings (single, double, template)
+                escaped = escaped.replace(/(`[\s\S]*?`|".*?"|'.*?')/g, '<span class="tok-str">$1</span>');
+                // Keywords
+                escaped = escaped.replace(/\b(const|let|var|function|return|if|else|for|while|switch|case|break|new|class|extends|import|export|from|async|await|try|catch|typeof|true|false|null|undefined)\b/g, '<span class="tok-kw">$1</span>');
+                // Numbers
+                escaped = escaped.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-num">$1</span>');
+            }
+
+            // Ensure trailing newline renders properly in <pre>
+            if (escaped.endsWith('\n')) {
+                escaped += ' ';
+            }
+            return escaped;
+        }
+
+        // --- Editor Rendering & Sync ---
+        function renderEditor() {
+            const code = state.files[state.activeTab];
+            codeInput.value = code;
+            codeHighlight.innerHTML = highlightSyntax(code, state.activeTab);
+            updateLineNumbers(code);
+        }
+
+        function updateLineNumbers(code) {
+            const lines = code.split('\n').length;
+            let nums = '';
+            for (let i = 1; i <= lines; i++) {
+                nums += i + '\n';
+            }
+            lineNumbers.textContent = nums;
+        }
+
+        function syncScroll() {
+            codeHighlight.scrollTop = codeInput.scrollTop;
+            codeHighlight.scrollLeft = codeInput.scrollLeft;
+            lineNumbers.scrollTop = codeInput.scrollTop;
+        }
+
+        function handleCodeInput() {
+            const val = codeInput.value;
+            state.files[state.activeTab] = val;
+            codeHighlight.innerHTML = highlightSyntax(val, state.activeTab);
+            updateLineNumbers(val);
+            saveToStorage();
+            statusIndicator.textContent = 'Edited • Auto-saved';
+
+            if (state.autoRun) {
+                clearTimeout(runDebounceTimer);
+                runDebounceTimer = setTimeout(runPreview, 450);
+            }
+        }
+
+        function pushUndoHistory() {
+            const tab = state.activeTab;
+            const stack = state.history[tab];
+            const current = state.files[tab];
+            if (stack[stack.length - 1] !== current) {
+                stack.push(current);
+                if (stack.length > 30) stack.shift();
+            }
+        }
+
+        function performUndo() {
+            const tab = state.activeTab;
+            const stack = state.history[tab];
+            if (stack.length > 0) {
+                const prev = stack.pop();
+                state.files[tab] = prev;
+                renderEditor();
+                saveToStorage();
+                showToast('Undid last change');
+            } else {
+                showToast('Nothing to undo', 'info');
+            }
+        }
+
+        // --- Tab Switching ---
+        function switchTab(tabName) {
+            state.activeTab = tabName;
+            document.querySelectorAll('.file-tab').forEach(btn => {
+                const isTarget = btn.dataset.tab === tabName;
+                btn.classList.toggle('active', isTarget);
+                btn.classList.toggle('bg-slate-950', isTarget);
+                btn.classList.toggle('text-sky-400', isTarget);
+                btn.classList.toggle('border-slate-700', isTarget);
+                btn.classList.toggle('border-transparent', !isTarget);
+                btn.classList.toggle('text-slate-400', !isTarget);
+            });
+            renderEditor();
+        }
+
+        // --- Mobile View Toggle (Code vs Preview) ---
+        function setMobileView(view) {
+            state.mobileView = view;
+            if (view === 'code') {
+                paneEditor.classList.remove('hidden');
+                paneEditor.classList.add('flex');
+                panePreview.classList.add('hidden');
+                panePreview.classList.remove('flex');
+
+                mobileBtnCode.classList.add('bg-sky-600', 'text-white');
+                mobileBtnCode.classList.remove('text-slate-300');
+                mobileBtnPreview.classList.remove('bg-sky-600', 'text-white');
+                mobileBtnPreview.classList.add('text-slate-300');
+            } else {
+                panePreview.classList.remove('hidden');
+                panePreview.classList.add('flex');
+                paneEditor.classList.add('hidden');
+                paneEditor.classList.remove('flex');
+
+                mobileBtnPreview.classList.add('bg-sky-600', 'text-white');
+                mobileBtnPreview.classList.remove('text-slate-300');
+                mobileBtnCode.classList.remove('bg-sky-600', 'text-white');
+                mobileBtnCode.classList.add('text-slate-300');
+                consoleBadge.classList.add('hidden');
+            }
+        }
+
+        // --- Live Preview & Console Injection ---
+        function runPreview() {
+            clearConsole(true);
+            const { html, css, js } = state.files;
+
+            // Inject console interceptor before user script executes
+            const consoleBridge = `
+                <script>
+                    (function() {
+                        const send = (type, args) => {
+                            try {
+                                const serialized = Array.from(args).map(a => {
+                                    if (typeof a === 'object' && a !== null) {
+                                        try { return JSON.stringify(a, null, 2); } catch(e) { return String(a); }
+                                    }
+                                    return String(a);
+                                }).join(' ');
+                                window.parent.postMessage({ source: 'pocketcode-console', type, message: serialized }, '*');
+                            } catch (e) {}
+                        };
+                        const origLog = console.log;
+                        const origWarn = console.warn;
+                        const origError = console.error;
+                        console.log = function(...args) { origLog.apply(console, args); send('log', args); };
+                        console.warn = function(...args) { origWarn.apply(console, args); send('warn', args); };
+                        console.error = function(...args) { origError.apply(console, args); send('error', args); };
+                        window.addEventListener('error', function(e) {
+                            send('error', [e.message + ' (Line ' + e.lineno + ')']);
+                        });
+                    })();
+                <\/script>
+            `;
+
+            const fullDocument = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>${css}</style>
+    ${consoleBridge}
+</head>
+<body>
+    ${html}
+    <script>
+        try {
+            ${js}
+        } catch (err) {
+            console.error(err.name + ': ' + err.message);
+        }
+    <\/script>
+</body>
+</html>`;
+
+            previewFrame.srcdoc = fullDocument;
+            statusIndicator.textContent = 'Running • ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        // --- Console Management ---
+        function appendConsoleLog(type, message) {
+            if (state.consoleCount === 0) {
+                consoleLogs.innerHTML = '';
+            }
+            state.consoleCount++;
+            consoleCount.textContent = state.consoleCount;
+
+            if (type === 'error' && state.mobileView === 'code') {
+                consoleBadge.classList.remove('hidden');
+            }
+
+            const entry = document.createElement('div');
+            entry.className = 'px-2 py-1 rounded border-l-2 break-words whitespace-pre-wrap ';
+
+            if (type === 'error') {
+                entry.className += 'bg-rose-950/50 border-rose-500 text-rose-300';
+            } else if (type === 'warn') {
+                entry.className += 'bg-amber-950/50 border-amber-500 text-amber-300';
+            } else {
+                entry.className += 'bg-slate-800/60 border-sky-500 text-slate-200';
+            }
+
+            entry.textContent = message;
+            consoleLogs.appendChild(entry);
+            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+        }
+
+        function clearConsole(silent = false) {
+            state.consoleCount = 0;
+            consoleCount.textContent = '0';
+            consoleBadge.classList.add('hidden');
+            if (!silent) {
+                consoleLogs.innerHTML = '<div class="text-slate-500 italic">Console cleared.</div>';
+            }
+        }
+
+        // --- Simple Code Formatter ---
+        function formatActiveCode() {
+            pushUndoHistory();
+            const tab = state.activeTab;
+            let code = state.files[tab];
+
+            if (tab === 'css' || tab === 'js') {
+                let indent = 0;
+                const lines = code
+                    .replace(/\{/g, ' {\n')
+                    .replace(/\}/g, '\n}\n')
+                    .replace(/;/g, ';\n')
+                    .split('\n')
+                    .map(l => l.trim())
+                    .filter(Boolean);
+
+                const formatted = lines.map(line => {
+                    if (line.startsWith('}')) indent = Math.max(0, indent - 1);
+                    const pad = '  '.repeat(indent);
+                    if (line.endsWith('{')) indent++;
+                    return pad + line;
+                }).join('\n');
+
+                state.files[tab] = formatted;
+            } else {
+                // Clean up extra blank lines in HTML
+                state.files[tab] = code.replace(/\n{3,}/g, '\n\n').trim();
+            }
+
+            renderEditor();
+            saveToStorage();
+            showToast(`Formatted ${tab.toUpperCase()}`);
+        }
+
+        // --- Insert Snippet / Symbol at Cursor ---
+        function insertAtCursor(text, cursorOffset = 0) {
+            pushUndoHistory();
+            const start = codeInput.selectionStart;
+            const end = codeInput.selectionEnd;
+            const val = codeInput.value;
+
+            codeInput.value = val.substring(0, start) + text + val.substring(end);
+            const newPos = start + text.length + cursorOffset;
+            codeInput.focus();
+            codeInput.setSelectionRange(newPos, newPos);
+            handleCodeInput();
+        }
+
+        // --- Toast Notification ---
+        let toastTimer = null;
+        function showToast(msg, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            const toastIcon = document.getElementById('toast-icon');
+
+            toastMsg.textContent = msg;
+            toastIcon.className = type === 'error'
+                ? 'fa-solid fa-circle-exclamation text-rose-400'
+                : 'fa-solid fa-circle-check text-emerald-400';
+
+            toast.classList.remove('opacity-0');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.classList.add('opacity-0');
+            }, 2200);
+        }
+
+        // --- Event Listeners ---
+        function setupEventListeners() {
+            // Editor input & scroll sync
+            codeInput.addEventListener('input', handleCodeInput);
+            codeInput.addEventListener('scroll', syncScroll);
+
+            // Smart Tab & Auto-indent on Enter
+            codeInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    insertAtCursor('  ');
+                } else if (e.key === 'Enter') {
+                    const start = codeInput.selectionStart;
+                    const val = codeInput.value;
+                    const lineStart = val.lastIndexOf('\n', start - 1) + 1;
+                    const currentLine = val.substring(lineStart, start);
+                    const match = currentLine.match(/^\s*/);
+                    let indent = match ? match[0] : '';
+                    if (currentLine.trim().endsWith('{') || currentLine.trim().endsWith('>')) {
+                        indent += '  ';
+                    }
+                    e.preventDefault();
+                    insertAtCursor('\n' + indent);
+                } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+                    e.preventDefault();
+                    performUndo();
+                } else {
+                    pushUndoHistory();
+                }
+            });
+
+            // File Tab Buttons
+            document.querySelectorAll('.file-tab').forEach(btn => {
+                btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+            });
+
+            // Mobile Symbol Toolbar Buttons
+            document.querySelectorAll('.sym-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const text = btn.dataset.insert;
+                    const offset = parseInt(btn.dataset.cursor || '0', 10);
+                    insertAtCursor(text, offset);
+                });
+            });
+
+            document.getElementById('btn-undo').addEventListener('click', performUndo);
+
+            // Mobile Pane Switcher
+            mobileBtnCode.addEventListener('click', () => setMobileView('code'));
+            mobileBtnPreview.addEventListener('click', () => {
+                setMobileView('preview');
+                runPreview();
+            });
+
+            // Header Actions
+            document.getElementById('btn-run').addEventListener('click', () => {
+                runPreview();
+                if (window.innerWidth < 768) {
+                    setMobileView('preview');
+                }
+            });
+
+            document.getElementById('template-select').addEventListener('change', (e) => {
+                loadTemplate(e.target.value);
+                showToast('Loaded template');
+            });
+
+            document.getElementById('btn-format').addEventListener('click', formatActiveCode);
+
+            document.getElementById('btn-copy').addEventListener('click', () => {
+                const helper = document.getElementById('clipboard-helper');
+                helper.value = state.files[state.activeTab];
+                helper.select();
+                try {
+                    document.execCommand('copy');
+                    showToast(`Copied ${state.activeTab.toUpperCase()} to clipboard`);
+                } catch (err) {
+                    showToast('Failed to copy', 'error');
+                }
+            });
+
+            document.getElementById('btn-download').addEventListener('click', () => {
+                const { html, css, js } = state.files;
+                const bundle = `<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>PocketCode Export</title>\n<style>\n${css}\n</style>\n</head>\n<body>\n${html}\n<script>\n${js}\n<\/script>\n</body>\n</html>`;
+                const blob = new Blob([bundle], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'index.html';
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('Exported index.html');
+            });
+
+            // Preview & Console Controls
+            document.getElementById('auto-run-toggle').addEventListener('change', (e) => {
+                state.autoRun = e.target.checked;
+            });
+
+            const consoleDrawer = document.getElementById('console-drawer');
+            document.getElementById('btn-toggle-console').addEventListener('click', () => {
+                consoleDrawer.classList.toggle('hidden');
+            });
+            document.getElementById('btn-close-console').addEventListener('click', () => {
+                consoleDrawer.classList.add('hidden');
+            });
+            document.getElementById('btn-clear-console').addEventListener('click', () => clearConsole(false));
+
+            // Receive messages from sandboxed iframe console
+            window.addEventListener('message', (event) => {
+                if (event.data && event.data.source === 'pocketcode-console') {
+                    appendConsoleLog(event.data.type, event.data.message);
+                }
+            });
+        }
+
+        // Start App
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
