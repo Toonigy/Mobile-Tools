@@ -161,6 +161,13 @@
                 <span class="hidden md:inline">Copy</span>
             </button>
 
+            <!-- Upload File Button & Hidden Input -->
+            <input type="file" id="file-upload-input" accept=".html,.htm,.css,.js,.txt" multiple class="hidden" aria-hidden="true">
+            <button id="btn-upload" title="Upload HTML, CSS, or JS files" class="p-2 sm:px-3 sm:py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-lg border border-slate-700 text-xs font-medium transition flex items-center gap-1.5">
+                <i class="fa-solid fa-upload text-purple-400"></i>
+                <span class="hidden md:inline">Upload</span>
+            </button>
+
             <!-- Download HTML Button -->
             <button id="btn-download" title="Download index.html" class="p-2 sm:px-3 sm:py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 rounded-lg border border-slate-700 text-xs font-medium transition flex items-center gap-1.5">
                 <i class="fa-solid fa-download text-emerald-400"></i>
@@ -1010,6 +1017,83 @@ function update(delta) {
                 } catch (err) {
                     showToast('Failed to copy', 'error');
                 }
+            });
+
+            // File Upload Handling
+            const fileUploadInput = document.getElementById('file-upload-input');
+            document.getElementById('btn-upload').addEventListener('click', () => {
+                fileUploadInput.click();
+            });
+
+            fileUploadInput.addEventListener('change', async (e) => {
+                const files = Array.from(e.target.files || []);
+                if (!files.length) return;
+
+                let lastLoadedTab = state.activeTab;
+                let loadedCount = 0;
+
+                for (const file of files) {
+                    try {
+                        const text = await file.text();
+                        const ext = file.name.split('.').pop().toLowerCase();
+
+                        if (ext === 'css') {
+                            state.history.css.push(state.files.css);
+                            state.files.css = text;
+                            lastLoadedTab = 'css';
+                            loadedCount++;
+                        } else if (ext === 'js') {
+                            state.history.js.push(state.files.js);
+                            state.files.js = text;
+                            lastLoadedTab = 'js';
+                            loadedCount++;
+                        } else if (ext === 'html' || ext === 'htm') {
+                            state.history.html.push(state.files.html);
+                            // If a full standalone HTML document is uploaded, extract embedded <style> and <script> if present
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(text, 'text/html');
+                            const hasFullDoc = /<html[\s>]/i.test(text) || /<body[\s>]/i.test(text);
+
+                            if (hasFullDoc && doc.body) {
+                                const styleTags = Array.from(doc.querySelectorAll('style'));
+                                const scriptTags = Array.from(doc.querySelectorAll('script:not([src])'));
+
+                                if (styleTags.length > 0) {
+                                    state.history.css.push(state.files.css);
+                                    state.files.css = styleTags.map(s => s.textContent.trim()).join('\n\n');
+                                    styleTags.forEach(s => s.remove());
+                                }
+                                if (scriptTags.length > 0) {
+                                    state.history.js.push(state.files.js);
+                                    state.files.js = scriptTags.map(s => s.textContent.trim()).join('\n\n');
+                                    scriptTags.forEach(s => s.remove());
+                                }
+                                state.files.html = doc.body.innerHTML.trim();
+                            } else {
+                                state.files.html = text;
+                            }
+                            lastLoadedTab = 'html';
+                            loadedCount++;
+                        } else {
+                            // Load .txt or unrecognized text files into the currently active tab
+                            pushUndoHistory();
+                            state.files[state.activeTab] = text;
+                            loadedCount++;
+                        }
+                    } catch (err) {
+                        showToast(`Error reading ${file.name}`, 'error');
+                    }
+                }
+
+                if (loadedCount > 0) {
+                    switchTab(lastLoadedTab);
+                    saveToStorage();
+                    runPreview();
+                    showToast(loadedCount === 1 ? `Loaded ${files[0].name}` : `Loaded ${loadedCount} files`);
+                }
+
+                // Reset input so the same file can be re-uploaded later if needed
+                fileUploadInput.value = '';
             });
 
             document.getElementById('btn-download').addEventListener('click', () => {
