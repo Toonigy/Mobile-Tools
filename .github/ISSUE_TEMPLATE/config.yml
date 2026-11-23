@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & Discussions
+    url: https://github.com/your-username/pocketcode/discussions
+    about: Ask questions, share templates you built with PocketCode, or discuss ideas with the community.
+  - name: 📖 PocketCode Documentation
+    url: https://github.com/your-username/pocketcode#readme
+    about: Check keyboard shortcuts, mobile toolbar tips, and browser compatibility notes before opening an issue.
